@@ -30,16 +30,87 @@ async function run() {
     const db = client.db("bibliodrop_db");
     const booksCollection = db.collection("books");
 
+    // Books related api
+    app.post('/api/books', async (req, res) => {
+        const book = req.body;
+        const newBook = {
+            ...book,
+            createdAt: new Date()
+        }
+        const result = await booksCollection.insertOne(newBook);
+        res.send(result);
+    })
+    
+    app.get("/api/books/librarian/:email", async (req, res) => {
+        const email = req.params.email;
 
-app.post('/api/books', async (req, res) => {
-    const book = req.body;
-    const newBook = {
-        ...book,
-        createdAt: new Date()
-    }
-    const result = await booksCollection.insertOne(newBook);
-    res.send(result);
-}) 
+        const result = await booksCollection
+            .find({ librarianEmail: email })
+            .sort({ createdAt: -1 })
+            .toArray();
+
+        res.send(result);
+    });
+
+    app.delete("/api/books/:id", async (req, res) => {
+        const { id } = req.params;
+
+        const result = await booksCollection.deleteOne({
+            _id: new ObjectId(id),
+        });
+
+        res.send(result);
+    });
+
+    app.patch("/api/books/:id", async (req, res) => {
+        const { id } = req.params;
+        const updates = req.body;
+        
+        const result = await booksCollection.updateOne(
+            { _id: new ObjectId(id) },
+            {
+            $set: updates,
+            }
+        );
+
+        res.send(result);
+    });
+
+    app.patch("/api/books/toggle-status/:id", async (req, res) => {
+        const { id } = req.params;
+
+        const book = await booksCollection.findOne({
+            _id: new ObjectId(id),
+        });
+
+        if (!book) {
+            return res.status(404).send({
+                message: "Book not found",
+            });
+        }
+
+        if (book.status === "Pending Approval") {
+            return res.status(403).send({
+            message: "Pending books cannot be published",
+            });
+        }
+
+        const newStatus =
+            book.status === "Published"
+            ? "Unpublished"
+            : "Published";
+
+        const result = await booksCollection.updateOne(
+            { _id: new ObjectId(id) },
+            {
+            $set: {
+                status: newStatus,
+            },
+            }
+        );
+
+        res.send(result);
+    });
 
 
 
