@@ -27,7 +27,7 @@ async function run() {
     // Send a ping to confirm a successful connection
     // await client.db("admin").command({ ping: 1 });
 
-    const db = client.db("bibliodropDb");
+    const db = client.db("bibliodrop_db");
     const booksCollection = db.collection("books");
 
 
