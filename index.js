@@ -313,7 +313,65 @@ async function run() {
         }
     });
 
-    
+    app.get("/api/librarian/stats/:email", async (req, res) => {
+        const { email } = req.params;
+
+        const totalBooksListed = await booksCollection.countDocuments({
+            librarianEmail: email,
+        });
+
+        const activePendingRequests =
+            await deliveryRequestsCollection.countDocuments({
+            librarianEmail: email,
+            status: "Pending",
+            });
+
+        const deliveries = await deliveryRequestsCollection
+            .find({
+            librarianEmail: email,
+            status: "Delivered",
+            })
+            .toArray();
+
+        const totalEarnings = deliveries.reduce(
+            (sum, item) => sum + Number(item.deliveryFee || 0),
+            0
+        );
+
+        const mostRequestedBooks =
+            await deliveryRequestsCollection
+            .aggregate([
+                {
+                $match: {
+                    librarianEmail: email,
+                },
+                },
+                {
+                $group: {
+                    _id: "$bookTitle",
+                    requests: {
+                    $sum: 1,
+                    },
+                },
+                },
+                {
+                $sort: {
+                    requests: -1,
+                },
+                },
+                {
+                $limit: 5,
+                },
+            ])
+            .toArray();
+
+        res.send({
+            totalBooksListed,
+            totalEarnings,
+            activePendingRequests,
+            mostRequestedBooks,
+        });
+    });
 
 
 
