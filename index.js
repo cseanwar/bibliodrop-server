@@ -1,7 +1,7 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 dotenv.config();
 const app = express();
 const port = process.env.PORT;
@@ -29,6 +29,7 @@ async function run() {
 
     const db = client.db("bibliodrop_db");
     const booksCollection = db.collection("books");
+    const deliveryRequestsCollection = db.collection("delivery_requests");
 
     // Books related api
     app.post('/api/books', async (req, res) => {
@@ -63,15 +64,41 @@ async function run() {
     });
 
     app.patch("/api/books/:id", async (req, res) => {
-        const { id } = req.params;
-        const updates = req.body;
-        
-        const result = await booksCollection.updateOne(
-            { _id: new ObjectId(id) },
+        try {
+            const { id } = req.params;
+
+            const updates = req.body;
+
+            const result = await booksCollection.updateOne(
             {
-            $set: updates,
+                _id: new ObjectId(id),
+            },
+            {
+                $set: updates,
             }
-        );
+            );
+
+            res.send({
+            success: true,
+            modifiedCount: result.modifiedCount,
+            });
+        } catch (error) {
+            console.error(error);
+
+            res.status(500).send({
+            success: false,
+            message: error.message,
+            });
+        }
+    });
+
+    // Get single book api for edit
+    app.get("/api/books/:id", async (req, res) => {
+        const { id } = req.params;
+
+        const result = await booksCollection.findOne({
+            _id: new ObjectId(id),
+        });
 
         res.send(result);
     });
@@ -105,6 +132,43 @@ async function run() {
             {
             $set: {
                 status: newStatus,
+            },
+            }
+        );
+
+        res.send(result);
+    });
+
+    
+    // Delivery related apis
+    app.get("/api/deliveries/librarian/:email", async (req, res) => {
+        const email = req.params.email;
+
+        const result = await deliveryRequestsCollection
+            .find({
+            librarianEmail: email,
+            })
+            .sort({
+            requestedAt: -1,
+            })
+            .toArray();
+
+        res.send(result);
+    });
+
+    app.patch("/api/deliveries/:id", async (req, res) => {
+        const { id } = req.params;
+
+        const { status } = req.body;
+
+        const result = await deliveryRequestsCollection.updateOne(
+            {
+            _id: new ObjectId(id),
+            },
+            {
+            $set: {
+                status,
+                updatedAt: new Date(),
             },
             }
         );
