@@ -29,6 +29,7 @@ async function run() {
 
     const db = client.db("bibliodrop_db");
     const booksCollection = db.collection("books");
+    const usersCollection = db.collection("user");
     const deliveryRequestsCollection = db.collection("delivery_requests");
 
     // Books related api
@@ -202,6 +203,15 @@ async function run() {
         res.send(result);
     });
 
+    app.get("/api/admin/books", async (req, res) => {
+        const result = await booksCollection
+            .find()
+            .sort({ createdAt: -1 })
+            .toArray();
+
+        res.send(result);
+    });
+
     app.delete("/api/admin/books/:id", async (req, res) => {
         const { id } = req.params;
 
@@ -216,6 +226,119 @@ async function run() {
         });
 
         res.send(result);
+    });
+
+    app.patch("/api/admin/books/status/:id", async (req, res) => {
+        const { id } = req.params;
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).send({
+                message: "Invalid Book ID",
+            });
+        }
+
+        const book = await booksCollection.findOne({
+            _id: new ObjectId(id),
+        });
+
+        if (!book) {
+            return res.status(404).send({
+                message: "Book not found",
+            });
+        }
+
+        const newStatus =
+            book.status === "Published"
+                ? "Unpublished"
+                : "Published";
+
+        const result = await booksCollection.updateOne(
+            {
+                _id: new ObjectId(id),
+            },
+            {
+                $set: {
+                    status: newStatus,
+                },
+            }
+        );
+
+        res.send(result);
+    });
+
+    
+
+
+
+    // User related api route
+    // Get all users
+    app.get("/api/users", async (req, res) => {
+        try {
+            const result = await usersCollection
+            .find({})
+            .sort({ createdAt: -1 })
+            .toArray();
+
+            res.send(result);
+        } catch (error) {
+            res.status(500).send({
+            message: error.message,
+            });
+        }
+    });
+
+    // Update role
+    app.patch("/api/users/role/:id", async (req, res) => {
+        try {
+            const { id } = req.params;
+            const { role } = req.body;
+
+            if (!ObjectId.isValid(id)) {
+            return res.status(400).send({
+                message: "Invalid User ID",
+            });
+            }
+
+            const result = await usersCollection.updateOne(
+            {
+                _id: new ObjectId(id),
+            },
+            {
+                $set: {
+                role,
+                },
+            }
+            );
+
+            res.send(result);
+        } catch (error) {
+            res.status(500).send({
+            message: error.message,
+            });
+        }
+    });
+
+    // Delete user
+    app.delete("/api/users/:id", async (req, res) => {
+        try {
+            const { id } = req.params;
+
+            if (!ObjectId.isValid(id)) {
+            return res.status(400).send({
+                message: "Invalid User ID",
+            });
+            }
+
+            const result = await usersCollection.deleteOne({
+            _id: new ObjectId(id),
+            });
+
+            res.send(result);
+        } catch (error) {
+            res.status(500).send({
+            message: error.message,
+            });
+        }
     });
 
     
