@@ -41,6 +41,20 @@ async function run() {
         const result = await booksCollection.insertOne(newBook);
         res.send(result);
     })
+
+    // Apis for dashboard/admin/book-approval queue page
+    app.get("/api/books/pending", async (req, res) => {
+        const result = await booksCollection
+            .find({
+            status: "Pending Approval",
+            })
+            .sort({
+            createdAt: -1,
+            })
+            .toArray();
+
+        res.send(result);
+    });
     
     app.get("/api/books/librarian/:email", async (req, res) => {
         const email = req.params.email;
@@ -53,58 +67,38 @@ async function run() {
         res.send(result);
     });
 
-    app.delete("/api/books/:id", async (req, res) => {
+    app.patch("/api/books/approve/:id", async (req, res) => {
         const { id } = req.params;
 
-        const result = await booksCollection.deleteOne({
-            _id: new ObjectId(id),
-        });
-
-        res.send(result);
-    });
-
-    app.patch("/api/books/:id", async (req, res) => {
-        try {
-            const { id } = req.params;
-
-            const updates = req.body;
-
-            const result = await booksCollection.updateOne(
-            {
-                _id: new ObjectId(id),
-            },
-            {
-                $set: updates,
-            }
-            );
-
-            res.send({
-            success: true,
-            modifiedCount: result.modifiedCount,
-            });
-        } catch (error) {
-            console.error(error);
-
-            res.status(500).send({
-            success: false,
-            message: error.message,
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).send({
+                message: "Invalid Book ID",
             });
         }
-    });
 
-    // Get single book api for edit
-    app.get("/api/books/:id", async (req, res) => {
-        const { id } = req.params;
-
-        const result = await booksCollection.findOne({
+        const result = await booksCollection.updateOne(
+            {
             _id: new ObjectId(id),
-        });
+            },
+            {
+            $set: {
+                status: "Published",
+            },
+            }
+        );
 
         res.send(result);
     });
 
+    
     app.patch("/api/books/toggle-status/:id", async (req, res) => {
         const { id } = req.params;
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).send({
+                message: "Invalid Book ID",
+            });
+        }
 
         const book = await booksCollection.findOne({
             _id: new ObjectId(id),
@@ -139,7 +133,94 @@ async function run() {
         res.send(result);
     });
 
+    // Get single book api for edit
+    app.get("/api/books/:id", async (req, res) => {
+        const { id } = req.params;
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).send({
+                message: "Invalid Book ID",
+            });
+        }
+
+        const result = await booksCollection.findOne({
+            _id: new ObjectId(id),
+        });
+
+        res.send(result);
+    });
+
+
+    app.patch("/api/books/:id", async (req, res) => {
+        try {
+            const { id } = req.params;
+
+            const updates = req.body;
+
+            if (!ObjectId.isValid(id)) {
+            return res.status(400).send({
+                message: "Invalid Book ID",
+            });
+        }
+
+            const result = await booksCollection.updateOne(
+            {
+                _id: new ObjectId(id),
+            },
+            {
+                $set: updates,
+            }
+            );
+
+            res.send({
+            success: true,
+            modifiedCount: result.modifiedCount,
+            });
+        } catch (error) {
+            console.error(error);
+
+            res.status(500).send({
+            success: false,
+            message: error.message,
+            });
+        }
+    });
+
+    app.delete("/api/books/:id", async (req, res) => {
+        const { id } = req.params;
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).send({
+                message: "Invalid Book ID",
+            });
+        }
+
+        const result = await booksCollection.deleteOne({
+            _id: new ObjectId(id),
+        });
+
+        res.send(result);
+    });
+
+    app.delete("/api/admin/books/:id", async (req, res) => {
+        const { id } = req.params;
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).send({
+                message: "Invalid Book ID",
+            });
+        }
+
+        const result = await booksCollection.deleteOne({
+            _id: new ObjectId(id),
+        });
+
+        res.send(result);
+    });
+
     
+
+
     // Delivery related apis
     app.get("/api/deliveries/librarian/:email", async (req, res) => {
         const email = req.params.email;
@@ -160,6 +241,12 @@ async function run() {
         const { id } = req.params;
 
         const { status } = req.body;
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).send({
+                message: "Invalid Book ID",
+            });
+        }
 
         const result = await deliveryRequestsCollection.updateOne(
             {
