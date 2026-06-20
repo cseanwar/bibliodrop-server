@@ -266,6 +266,53 @@ async function run() {
         res.send(result);
     });
 
+    app.get("/api/admin/stats", async (req, res) => {
+        try {
+            const totalUsers =
+                await usersCollection.countDocuments();
+
+            const totalBooks =
+                await booksCollection.countDocuments();
+
+            const totalDeliveries =
+                await deliveryRequestsCollection.countDocuments();
+
+            const deliveries =
+                await deliveryRequestsCollection
+                    .find()
+                    .toArray();
+
+            const totalRevenue = deliveries.reduce(
+                (sum, delivery) =>
+                    sum + Number(delivery.deliveryFee || 0),
+                0
+            );
+
+            const categoryData = await booksCollection
+                .aggregate([
+                    {
+                        $group: {
+                            _id: "$category",
+                            count: { $sum: 1 },
+                        },
+                    },
+                ])
+                .toArray();
+
+            res.send({
+                totalUsers,
+                totalBooks,
+                totalDeliveries,
+                totalRevenue,
+                categoryData,
+            });
+        } catch (error) {
+            res.status(500).send({
+                message: error.message,
+            });
+        }
+    });
+
     
 
 
