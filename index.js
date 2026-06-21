@@ -627,6 +627,68 @@ async function run() {
         res.send(result);
     });
 
+    // Api route for user overview page
+    app.get("/api/dashboard/user/:email", async (req, res) => {
+        const { email } = req.params;
+
+        const deliveries = await deliveryRequestsCollection
+            .find({ userEmail: email })
+            .toArray();
+
+        const totalBooksRead = deliveries.filter(
+            (d) => d.status === "Delivered"
+        ).length;
+
+        const pendingDeliveries = deliveries.filter(
+            (d) => d.status !== "Delivered"
+        ).length;
+
+        const totalSpent = deliveries.reduce(
+            (sum, item) => sum + Number(item.deliveryFee || 0),
+            0
+        );
+
+        res.send({
+            totalBooksRead,
+            pendingDeliveries,
+            totalSpent,
+        });
+    });
+
+    app.get("/api/dashboard/user/chart/:email", async (req, res) => {
+        const { email } = req.params;
+
+        const deliveries = await deliveryRequestsCollection
+            .find({
+            userEmail: email,
+            status: "Delivered",
+            })
+            .toArray();
+
+        const chartData = {};
+
+        deliveries.forEach((item) => {
+            const month = new Date(item.updatedAt).toLocaleString(
+            "default",
+            {
+                month: "short",
+            }
+            );
+
+            chartData[month] =
+            (chartData[month] || 0) + 1;
+        });
+
+        const result = Object.entries(chartData).map(
+            ([month, books]) => ({
+            month,
+            books,
+            })
+        );
+
+        res.send(result);
+    });
+
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
