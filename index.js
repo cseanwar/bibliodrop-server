@@ -524,6 +524,37 @@ async function run() {
         res.send(result);
     });
 
+    // User reading list api
+    app.get("/api/reading-list/:email", async (req, res) => {
+        try {
+            const { email } = req.params;
+
+            const deliveries = await deliveryRequestsCollection
+            .find({
+                userEmail: email,
+                status: "Delivered",
+            })
+            .toArray();
+
+            const bookIds = deliveries.map(
+            (item) => new ObjectId(item.bookId)
+            );
+
+            const books = await booksCollection
+            .find({
+                _id: { $in: bookIds },
+            })
+            .toArray();
+
+            res.send(books);
+        } catch (error) {
+            console.error(error);
+
+            res.status(500).send({
+            message: "Failed to load reading list",
+            });
+        }
+    });
 
 
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
