@@ -45,6 +45,53 @@ async function run() {
         res.send(result);
     })
 
+    app.get("/api/books", async (req, res) => {
+        const {
+            search = "",
+            category = "",
+            sort = "",
+        } = req.query;
+
+        const query = {
+            status: "Published",
+        };
+
+        if (search) {
+            query.title = {
+            $regex: search,
+            $options: "i",
+            };
+        }
+
+        if (category) {
+            query.category = category;
+        }
+
+        let cursor = booksCollection.find(query);
+
+        if (sort === "newest") {
+            cursor = cursor.sort({
+            createdAt: -1,
+            });
+        }
+
+        if (sort === "fee-asc") {
+            cursor = cursor.sort({
+            deliveryFee: 1,
+            });
+        }
+
+        if (sort === "fee-desc") {
+            cursor = cursor.sort({
+            deliveryFee: -1,
+            });
+        }
+
+        const result = await cursor.toArray();
+
+        res.send(result);
+    });
+
     // Apis for dashboard/admin/book-approval queue page
     app.get("/api/books/pending", async (req, res) => {
         const result = await booksCollection
@@ -478,8 +525,10 @@ async function run() {
         res.send(result);
     });
 
-    app.patch("/api/deliveries/status/:id", async (req, res) => {
+    app.patch("/api/deliveries/:id", async (req, res) => {
         const { id } = req.params;
+
+        const { status } = req.body;
 
         if (!ObjectId.isValid(id)) {
             return res.status(400).send({
@@ -487,9 +536,10 @@ async function run() {
             });
         }
 
-        const delivery = await deliveryRequestsCollection.findOne({
+        const delivery =
+            await deliveryRequestsCollection.findOne({
             _id: new ObjectId(id),
-        });
+            });
 
         if (!delivery) {
             return res.status(404).send({
@@ -497,25 +547,30 @@ async function run() {
             });
         }
 
-        let nextStatus = delivery.status;
+        const allowedStatuses = [
+            "Pending",
+            "Dispatched",
+            "Delivered",
+        ];
 
-        if (delivery.status === "Pending") {
-            nextStatus = "Dispatched";
-        } else if (delivery.status === "Dispatched") {
-            nextStatus = "Delivered";
+        if (!allowedStatuses.includes(status)) {
+            return res.status(400).send({
+            message: "Invalid status",
+            });
         }
 
-        const result = await deliveryRequestsCollection.updateOne(
+        const result =
+            await deliveryRequestsCollection.updateOne(
             {
-            _id: new ObjectId(id),
+                _id: new ObjectId(id),
             },
             {
-            $set: {
-                status: nextStatus,
+                $set: {
+                status,
                 updatedAt: new Date(),
-            },
+                },
             }
-        );
+            );
 
         res.send(result);
     });
