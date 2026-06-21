@@ -30,6 +30,7 @@ async function run() {
     const db = client.db("bibliodrop_db");
     const booksCollection = db.collection("books");
     const usersCollection = db.collection("user");
+    const reviewsCollection = db.collection("reviews");
     const deliveryRequestsCollection = db.collection("delivery_requests");
 
     // Books related api
@@ -556,6 +557,75 @@ async function run() {
         }
     });
 
+    // Reviews by user related api
+    app.get("/api/reviews/user/:email", async (req, res) => {
+        const { email } = req.params;
+
+        const result = await reviewsCollection
+            .find({
+            userEmail: email,
+            })
+            .sort({
+            createdAt: -1,
+            })
+            .toArray();
+
+        res.send(result);
+    });
+
+    app.post("/api/reviews", async (req, res) => {
+        const review = {
+            ...req.body,
+            createdAt: new Date(),
+        };
+
+        const result = await reviewsCollection.insertOne(
+            review
+        );
+
+        res.send(result);
+    });
+
+    app.patch("/api/reviews/:id", async (req, res) => {
+        const { id } = req.params;
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).send({
+            message: "Invalid Review ID",
+            });
+        }
+
+        const result = await reviewsCollection.updateOne(
+            {
+            _id: new ObjectId(id),
+            },
+            {
+            $set: {
+                rating: req.body.rating,
+                comment: req.body.comment,
+                updatedAt: new Date(),
+            },
+            }
+        );
+
+        res.send(result);
+    });
+
+    app.delete("/api/reviews/:id", async (req, res) => {
+        const { id } = req.params;
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).send({
+            message: "Invalid Review ID",
+            });
+        }
+
+        const result = await reviewsCollection.deleteOne({
+            _id: new ObjectId(id),
+        });
+
+        res.send(result);
+    });
 
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
