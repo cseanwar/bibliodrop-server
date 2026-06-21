@@ -465,15 +465,31 @@ async function run() {
         res.send(result);
     });
 
-    app.patch("/api/deliveries/:id", async (req, res) => {
+    app.patch("/api/deliveries/status/:id", async (req, res) => {
         const { id } = req.params;
-
-        const { status } = req.body;
 
         if (!ObjectId.isValid(id)) {
             return res.status(400).send({
-                message: "Invalid Book ID",
+            message: "Invalid Delivery ID",
             });
+        }
+
+        const delivery = await deliveryRequestsCollection.findOne({
+            _id: new ObjectId(id),
+        });
+
+        if (!delivery) {
+            return res.status(404).send({
+            message: "Delivery not found",
+            });
+        }
+
+        let nextStatus = delivery.status;
+
+        if (delivery.status === "Pending") {
+            nextStatus = "Dispatched";
+        } else if (delivery.status === "Dispatched") {
+            nextStatus = "Delivered";
         }
 
         const result = await deliveryRequestsCollection.updateOne(
@@ -482,11 +498,28 @@ async function run() {
             },
             {
             $set: {
-                status,
+                status: nextStatus,
                 updatedAt: new Date(),
             },
             }
         );
+
+        res.send(result);
+    });
+
+
+    // Delivery history api for user dashboard
+    app.get("/api/deliveries/user/:email", async (req, res) => {
+        const {email} = req.params;
+
+        const result = await deliveryRequestsCollection
+            .find({
+            userEmail: email,
+            })
+            .sort({
+            requestedAt: -1,
+            })
+            .toArray();
 
         res.send(result);
     });
