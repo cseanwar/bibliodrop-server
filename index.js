@@ -32,6 +32,7 @@ async function run() {
     const usersCollection = db.collection("user");
     const reviewsCollection = db.collection("reviews");
     const deliveryRequestsCollection = db.collection("delivery_requests");
+    const transactionsCollection = db.collection("transactions");
 
     // Books related api
     app.post('/api/books', async (req, res) => {
@@ -312,6 +313,17 @@ async function run() {
                 message: error.message,
             });
         }
+    });
+
+    app.get("/api/admin/transactions", async (req, res) => {
+        const result = await transactionsCollection
+            .find()
+            .sort({
+            createdAt: -1,
+            })
+            .toArray();
+
+        res.send(result);
     });
 
     app.get("/api/librarian/stats/:email", async (req, res) => {
