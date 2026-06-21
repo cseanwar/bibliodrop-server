@@ -641,14 +641,69 @@ async function run() {
     });
 
     app.post("/api/reviews", async (req, res) => {
-        const review = {
-            ...req.body,
-            createdAt: new Date(),
-        };
+        try {
+            const review = req.body;
 
-        const result = await reviewsCollection.insertOne(
-            review
-        );
+            const deliveredBook =
+            await deliveryRequestsCollection.findOne({
+                bookId: review.bookId,
+                userEmail: review.userEmail,
+                status: "Delivered",
+            });
+
+            if (!deliveredBook) {
+            return res.status(403).send({
+                success: false,
+                message:
+                "Only users who received the book can review it.",
+            });
+            }
+
+            const existingReview =
+            await reviewsCollection.findOne({
+                bookId: review.bookId,
+                userEmail: review.userEmail,
+            });
+
+            if (existingReview) {
+            return res.status(400).send({
+                success: false,
+                message:
+                "You have already reviewed this book.",
+            });
+            }
+
+            const newReview = {
+            ...review,
+            createdAt: new Date(),
+            };
+
+            const result =
+            await reviewsCollection.insertOne(
+                newReview
+            );
+
+            res.send({
+            success: true,
+            insertedId: result.insertedId,
+            });
+        } catch (error) {
+            console.error(error);
+
+            res.status(500).send({
+            success: false,
+            message: error.message,
+            });
+        }
+    });
+
+    app.get("/api/reviews/book/:bookId", async (req, res) => {
+        const { bookId } = req.params;
+
+        const result = await reviewsCollection
+        .find({ bookId })
+        .sort({ createdAt: -1 })
+        .toArray();
 
         res.send(result);
     });
@@ -692,6 +747,22 @@ async function run() {
         });
 
         res.send(result);
+    });
+
+    app.get("/api/reviews/can-review/:bookId/:email", async (req, res) => {
+        const { bookId, email } =
+        req.params;
+
+        const delivery =
+        await deliveryRequestsCollection.findOne({
+            bookId,
+            userEmail: email,
+            status: "Delivered",
+        });
+
+        res.send({
+        canReview: !!delivery,
+        });
     });
 
     // Api route for user overview page
