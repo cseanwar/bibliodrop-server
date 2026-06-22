@@ -39,15 +39,21 @@ async function run() {
     const transactionsCollection = db.collection("transactions");
 
     // Books related api
-    app.post('/api/books', async (req, res) => {
-        const book = req.body;
-        const newBook = {
-            ...book,
-            createdAt: new Date()
-        }
-        const result = await booksCollection.insertOne(newBook);
+    app.post("/api/books", async (req, res) => {
+        const book = {
+            ...req.body,
+
+            status: "Pending Approval",
+
+            availability: "Available",
+
+            createdAt: new Date(),
+        };
+
+        const result = await booksCollection.insertOne(book);
+
         res.send(result);
-    })
+    });
 
     app.get("/api/books", async (req, res) => {
         const {
@@ -367,14 +373,46 @@ async function run() {
     });
 
     app.get("/api/admin/transactions", async (req, res) => {
-        const result = await transactionsCollection
-            .find()
+        const result = await deliveryRequestsCollection
+            .find({
+            status: "Delivered",
+            })
             .sort({
-            createdAt: -1,
+            requestedAt: -1,
             })
             .toArray();
 
-        res.send(result);
+        res.send(
+            result.map((item) => ({
+            _id: item._id,
+            userEmail: item.userEmail,
+            librarianEmail: item.librarianEmail,
+            amount: item.deliveryFee || 0, // IMPORTANT FIX
+            createdAt: item.requestedAt,   // IMPORTANT FIX
+            }))
+        );
+    });
+
+    app.post("/api/transactions", async (req, res) => {
+        try {
+            const transaction = {
+            ...req.body,
+            createdAt: new Date(),
+            };
+
+            const result =
+            await transactionsCollection.insertOne(
+                transaction
+            );
+
+            res.send(result);
+        } catch (error) {
+            console.error(error);
+
+            res.status(500).send({
+            message: "Failed to save transaction",
+            });
+        }
     });
 
     app.get("/api/librarian/stats/:email", async (req, res) => {
@@ -397,10 +435,15 @@ async function run() {
             })
             .toArray();
 
-        const totalEarnings = deliveries.reduce(
-            (sum, item) => sum + Number(item.deliveryFee || 0),
-            0
-        );
+        let totalEarnings = 0;
+
+        for (const delivery of deliveries) {
+            const book = await booksCollection.findOne({
+                _id: new ObjectId(delivery.bookId),
+            });
+
+            totalEarnings += Number(book?.deliveryFee || 0);
+        }
 
         const mostRequestedBooks =
             await deliveryRequestsCollection
@@ -594,13 +637,18 @@ async function run() {
 
     app.post("/api/delivery-request", async (req, res) => {
         try {
-            const request = {
-            ...req.body,
-            status: "Pending",
-            requestedAt: new Date(),
-            };
+            const request = req.body;
 
-            // Check existing request FIRST
+            const book = await booksCollection.findOne({
+            _id: new ObjectId(request.bookId),
+            });
+
+            if (!book) {
+            return res.status(404).send({
+                message: "Book not found",
+            });
+            }
+
             const existingRequest =
             await deliveryRequestsCollection.findOne({
                 bookId: request.bookId,
@@ -622,23 +670,59 @@ async function run() {
             });
             }
 
-            // Create request
+            const deliveryRequest = {
+                bookId: request.bookId,
+
+                bookTitle: book.title,
+                bookImage: book.image,
+
+                librarianEmail: book.librarianEmail,
+
+                deliveryFee: Number(book.deliveryFee),
+
+                userEmail: request.userEmail,
+                userName: request.userName,
+
+                status: "Pending",
+                requestedAt: new Date(),
+            };
+
+            if (book.availability === "Checked Out") {
+                return res.status(400).send({
+                    message: "Book is already checked out",
+                });
+            }
+                
+
             const result =
-            await deliveryRequestsCollection.insertOne(
-                request
+                await deliveryRequestsCollection.insertOne(
+                    deliveryRequest
             );
 
-            // Update book status
+            await transactionsCollection.insertOne({
+                bookId: request.bookId,
+                bookTitle: book.title,
+
+                librarianEmail: book.librarianEmail,
+
+                userEmail: request.userEmail,
+                userName: request.userName,
+
+                amount: Number(book.deliveryFee),
+
+                createdAt: new Date(),
+            });
+
             await booksCollection.updateOne(
-            {
-                _id: new ObjectId(request.bookId),
-            },
-            {
-                $set: {
-                status: "Pending Delivery",
-                requestedBy: request.userEmail,
+                {
+                    _id: new ObjectId(request.bookId),
                 },
-            }
+                {
+                    $set: {
+                    availability: "Checked Out",
+                    requestedBy: request.userEmail,
+                    },
+                }
             );
 
             res.send(result);
@@ -652,53 +736,55 @@ async function run() {
     });
 
     app.patch("/api/deliveries/:id", async (req, res) => {
-        const { id } = req.params;
+        try {
+            const { id } = req.params;
+            const { status } = req.body;
 
-        const { status } = req.body;
-
-        if (!ObjectId.isValid(id)) {
+            if (!ObjectId.isValid(id)) {
             return res.status(400).send({
-            message: "Invalid Delivery ID",
+                message: "Invalid Delivery ID",
             });
-        }
-
-        const delivery =
-            await deliveryRequestsCollection.findOne({
-            _id: new ObjectId(id),
-            });
-
-        if (!delivery) {
-            return res.status(404).send({
-            message: "Delivery not found",
-            });
-        }
-
-        const allowedStatuses = [
-            "Pending",
-            "Dispatched",
-            "Delivered",
-        ];
-
-        if (!allowedStatuses.includes(status)) {
-            return res.status(400).send({
-            message: "Invalid status",
-            });
-        }
-
-        const result =
-            await deliveryRequestsCollection.updateOne(
-            {
-                _id: new ObjectId(id),
-            },
-            {
-                $set: {
-                status,
-                updatedAt: new Date(),
-                },
             }
+
+            const result =
+            await deliveryRequestsCollection.updateOne(
+                {
+                _id: new ObjectId(id),
+                },
+                {
+                $set: {
+                    status,
+                    updatedAt: new Date(),
+                },
+                }
             );
 
-        res.send(result);
+            // if (status === "Delivered") {
+            // const delivery =
+            //     await deliveryRequestsCollection.findOne({
+            //     _id: new ObjectId(id),
+            //     });
+
+            // await booksCollection.updateOne(
+            //     {
+            //         _id: new ObjectId(delivery.bookId),
+            //     },
+            //     {
+            //         $set: {
+            //             availability: "Checked Out",
+            //             },
+            //         }
+            //     );
+            // }
+
+            res.send(result);
+        } catch (error) {
+            console.error(error);
+
+            res.status(500).send({
+            message: "Failed to update delivery",
+            });
+        }
     });
 
 
