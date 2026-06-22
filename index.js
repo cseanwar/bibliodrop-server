@@ -1,8 +1,11 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
+const Stripe = require("stripe");
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+
 dotenv.config();
+
 const app = express();
 const port = process.env.PORT;
 
@@ -10,6 +13,7 @@ app.use(cors());
 app.use(express.json());
 
 const uri = process.env.MONGODB_URI;
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -507,6 +511,69 @@ async function run() {
     });
 
     
+    // Payment related apis
+    app.post("/api/create-checkout-session",async (req, res) => {
+        try {
+        const {
+            bookId,
+            title,
+            deliveryFee,
+            userEmail,
+        } = req.body;
+
+        const session =
+            await stripe.checkout.sessions.create({
+            payment_method_types: [
+                "card",
+            ],
+
+            line_items: [
+                {
+                price_data: {
+                    currency: "usd",
+
+                    product_data: {
+                    name: title,
+                    },
+
+                    unit_amount:
+                    Number(
+                        deliveryFee
+                    ) * 100,
+                },
+
+                quantity: 1,
+                },
+            ],
+
+            mode: "payment",
+
+            success_url:
+                `${process.env.CLIENT_URL}/payment-success?bookId=${bookId}`,
+
+            cancel_url:
+                `${process.env.CLIENT_URL}/books/${bookId}`,
+
+            metadata: {
+                bookId,
+                userEmail,
+            },
+            });
+
+        res.send({
+            url: session.url,
+        });
+        } catch (error) {
+        console.error(error);
+
+        res.status(500).send({
+            message:
+            "Failed to create checkout session",
+        });
+        }
+    });
+
+    
 
 
     // Delivery related apis
@@ -523,6 +590,65 @@ async function run() {
             .toArray();
 
         res.send(result);
+    });
+
+    app.post("/api/delivery-request", async (req, res) => {
+        try {
+            const request = {
+            ...req.body,
+            status: "Pending",
+            requestedAt: new Date(),
+            };
+
+            // Check existing request FIRST
+            const existingRequest =
+            await deliveryRequestsCollection.findOne({
+                bookId: request.bookId,
+                userEmail: request.userEmail,
+                status: {
+                $in: [
+                    "Pending",
+                    "Approved",
+                    "Shipped",
+                    "Delivered",
+                ],
+                },
+            });
+
+            if (existingRequest) {
+            return res.status(400).send({
+                message:
+                "You already have an active request for this book",
+            });
+            }
+
+            // Create request
+            const result =
+            await deliveryRequestsCollection.insertOne(
+                request
+            );
+
+            // Update book status
+            await booksCollection.updateOne(
+            {
+                _id: new ObjectId(request.bookId),
+            },
+            {
+                $set: {
+                status: "Pending Delivery",
+                requestedBy: request.userEmail,
+                },
+            }
+            );
+
+            res.send(result);
+        } catch (error) {
+            console.error(error);
+
+            res.status(500).send({
+            message: "Failed to create delivery request",
+            });
+        }
     });
 
     app.patch("/api/deliveries/:id", async (req, res) => {
@@ -763,6 +889,19 @@ async function run() {
         res.send({
         canReview: !!delivery,
         });
+    });
+
+    app.get("/api/books/related/:category/:bookId", async (req, res) => {
+        const { category, bookId } = req.params;
+
+        const result =
+        await booksCollection.find({ category,
+            status: "Published",
+            _id: {
+                $ne: new ObjectId(bookId),
+            },}).limit(4).toArray();
+
+        res.send(result);
     });
 
     // Api route for user overview page
