@@ -37,6 +37,7 @@ async function run() {
     const reviewsCollection = db.collection("reviews");
     const deliveryRequestsCollection = db.collection("delivery_requests");
     const transactionsCollection = db.collection("transactions");
+    const wishlistsCollection = db.collection("wishlists");
 
     // Books related api
     app.post("/api/books", async (req, res) => {
@@ -61,7 +62,7 @@ async function run() {
             category = "",
             sort = "",
             page = 1,
-            perPage = 12,
+            perPage = 8,
         } = req.query;
 
          const query = {
@@ -288,6 +289,60 @@ async function run() {
         });
 
         res.send(result);
+    });
+
+    // Wishlist related apis
+    app.post("/api/wishlist", async (req, res) => {
+        try {
+                const { bookId, userEmail } = req.body;
+
+                const exists = await wishlistsCollection.findOne({
+                bookId,
+                userEmail,
+            });
+
+            if (exists) {
+                return res.status(400).send({
+                    message: "Book already in wishlist",
+                });
+            }
+
+            const result = await wishlistsCollection.insertOne({ bookId, userEmail, createdAt: new Date() });
+            res.send(result);
+        } catch (error) {
+            console.error(error);
+            res.status(500).send({
+            message: "Failed to add wishlist",
+            });
+        }
+    });
+
+    app.delete("/api/wishlist", async (req, res) => {
+        try {
+            const { bookId, userEmail } = req.body;
+            const result = await wishlistsCollection.deleteOne({ bookId, userEmail });
+            res.send(result);
+        } catch (error) {
+            console.error(error);
+            res.status(500).send({
+            message: "Failed to remove wishlist",
+            });
+        }
+    });
+
+    app.get("/api/wishlist/:email", async (req, res) => {
+        try {
+            const { email } = req.params;
+            const wishlist = await wishlistsCollection.find({ userEmail: email }).toArray();
+            const bookIds = wishlist.map((item) => new ObjectId(item.bookId));
+            const books = await booksCollection.find({_id: { $in: bookIds }}).toArray();
+            res.send(books);
+        } catch (error) {
+            console.error(error);
+            res.status(500).send({
+            message: "Failed to load wishlist",
+            });
+        }
     });
 
     app.get("/api/admin/books", async (req, res) => {
