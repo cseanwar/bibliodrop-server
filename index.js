@@ -60,10 +60,18 @@ async function run() {
             search = "",
             category = "",
             sort = "",
+            page = 1,
+            perPage = 12,
         } = req.query;
 
-        const query = {
-            status: "Published",
+         const query = {
+            status: {
+                $in: [
+                    "Published",
+                    "Pending Delivery",
+                    "Delivered",
+                ],
+            },
         };
 
         if (search) {
@@ -97,9 +105,29 @@ async function run() {
             });
         }
 
-        const result = await cursor.toArray();
+        // For pagination
+        const total = await booksCollection.countDocuments(query);
+        const books = await cursor.skip((Number(page) - 1) * Number(perPage)).limit(Number(perPage)).toArray();
+        const totalPages = Math.ceil(total / Number(perPage));
+        res.send({
+            books,
+            total,
+            totalPages,
+            currentPage: Number(page),
+        });
+    });
 
-        res.send(result);
+    // api for featured books section
+    app.get("/api/books/featured", async (req, res) => {
+        try {
+            const result = await booksCollection.find({ status: "Published" }).sort({ createdAt: -1 }).limit(6).toArray();
+            res.send(result);
+        } catch (error) {
+            console.error(error);
+            res.status(500).send({
+            message: "Failed to fetch featured books",
+            });
+        }
     });
 
     // Apis for dashboard/admin/book-approval queue page
