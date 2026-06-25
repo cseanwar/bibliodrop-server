@@ -228,7 +228,7 @@ async function run() {
     });
 
     
-    app.patch("/api/books/toggle-status/:id", async (req, res) => {
+    app.patch("/api/books/toggle-status/:id", verifyToken, verifyRole("librarian"), async (req, res) => {
         const { id } = req.params;
 
         if (!ObjectId.isValid(id)) {
@@ -340,7 +340,7 @@ async function run() {
     });
 
     // Wishlist related apis
-    app.post("/api/wishlist", verifyToken, async (req, res) => {
+    app.post("/api/wishlist", verifyToken, verifyRole("user"), async (req, res) => {
         try {
                 const { bookId, userEmail } = req.body;
 
@@ -365,7 +365,7 @@ async function run() {
         }
     });
 
-    app.delete("/api/wishlist", verifyToken, async (req, res) => {
+    app.delete("/api/wishlist", verifyToken, verifyRole("user"), async (req, res) => {
         try {
             const { bookId, userEmail } = req.body;
             const result = await wishlistsCollection.deleteOne({ bookId, userEmail });
@@ -375,7 +375,7 @@ async function run() {
         }
     });
 
-    app.get("/api/wishlist/:email", verifyToken, async (req, res) => {
+    app.get("/api/wishlist/:email", verifyToken, verifyRole("user"), async (req, res) => {
         try {
             const { email } = req.params;
             const wishlist = await wishlistsCollection.find({ userEmail: email }).toArray();
@@ -683,7 +683,7 @@ async function run() {
 
     
     // Payment related apis
-    app.post("/api/create-checkout-session",async (req, res) => {
+    app.post("/api/create-checkout-session", verifyToken, async (req, res) => {
         try {
         const {
             bookId,
@@ -863,7 +863,7 @@ async function run() {
         }
     });
 
-    app.patch("/api/deliveries/:id", async (req, res) => {
+    app.patch("/api/deliveries/:id", verifyToken, async (req, res) => {
         try {
             const { id } = req.params;
             const { status } = req.body;
@@ -962,7 +962,7 @@ async function run() {
         res.send(result);
     });
 
-    app.post("/api/reviews", async (req, res) => {
+    app.post("/api/reviews", verifyToken, async (req, res) => {
         try {
             const review = req.body;
 
@@ -1030,7 +1030,7 @@ async function run() {
         res.send(result);
     });
 
-    app.patch("/api/reviews/:id", async (req, res) => {
+    app.patch("/api/reviews/:id", verifyToken, async (req, res) => {
         const { id } = req.params;
 
         if (!ObjectId.isValid(id)) {
@@ -1055,7 +1055,7 @@ async function run() {
         res.send(result);
     });
 
-    app.delete("/api/reviews/:id", async (req, res) => {
+    app.delete("/api/reviews/:id", verifyToken, async (req, res) => {
         const { id } = req.params;
 
         if (!ObjectId.isValid(id)) {
@@ -1101,7 +1101,7 @@ async function run() {
     });
 
     // Api route for user overview page
-    app.get("/api/dashboard/user/:email", verifyToken, async (req, res) => {
+    app.get("/api/dashboard/user/:email", verifyToken, verifyRole("user"), async (req, res) => {
         const { email } = req.params;
 
         const deliveries = await deliveryRequestsCollection
@@ -1128,7 +1128,7 @@ async function run() {
         });
     });
 
-    app.get("/api/dashboard/user/chart/:email", async (req, res) => {
+    app.get("/api/dashboard/user/chart/:email", verifyToken, verifyRole("user"), async (req, res) => {
         const { email } = req.params;
 
         const deliveries = await deliveryRequestsCollection
