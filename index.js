@@ -38,21 +38,69 @@ async function run() {
     const deliveryRequestsCollection = db.collection("delivery_requests");
     const transactionsCollection = db.collection("transactions");
     const wishlistsCollection = db.collection("wishlists");
+    const sessionCollection = db.collection('session');
+
+
+    // verification related
+    const verifyToken = async (req, res, next) => {
+        try {
+            const authHeader = req.headers?.authorization;
+            if (!authHeader) {
+                return res.status(401).send({message: "Unauthorized access"});
+            }
+
+            const token = authHeader.split(" ")[1];
+            if (!token) {
+                return res.status(401).send({message: "Unauthorized access"});
+            }
+
+            const session = await sessionCollection.findOne({token});
+
+            if (!session) {
+                return res.status(401).send({message: "Unauthorized access"});
+            }
+
+            if (new Date(session.expiresAt) < new Date()) {
+                return res.status(401).send({message: "Session expired"});
+            }
+
+            const user = await usersCollection.findOne({_id: new ObjectId(session.userId)});
+
+            if (!user) {
+                return res.status(401).send({message: "Unauthorized access"});
+            }
+
+            req.user = user;
+            next();
+
+        } catch (error) {
+            console.error(error);
+
+            res.status(500).send({message: "Authentication failed"});
+        }
+    };
+
+    // Have to use after verifyToken middleware
+    const verifyRole = (...roles) => {
+        return (req, res, next) => {
+            if (!roles.includes(req.user.role)) {
+                return res.status(403).send({message: "Forbidden access"});
+            }
+
+        next();
+        };
+    };
 
     // Books related api
-    app.post("/api/books", async (req, res) => {
+    app.post("/api/books", verifyToken, verifyRole("librarian"), async (req, res) => {
         const book = {
             ...req.body,
-
             status: "Pending Approval",
-
             availability: "Available",
-
             createdAt: new Date(),
         };
 
         const result = await booksCollection.insertOne(book);
-
         res.send(result);
     });
 
@@ -156,7 +204,7 @@ async function run() {
         res.send(result);
     });
 
-    app.patch("/api/books/approve/:id", async (req, res) => {
+    app.patch("/api/books/approve/:id", verifyToken, verifyRole("admin"), async (req, res) => {
         const { id } = req.params;
 
         if (!ObjectId.isValid(id)) {
@@ -240,7 +288,7 @@ async function run() {
     });
 
 
-    app.patch("/api/books/:id", async (req, res) => {
+    app.patch("/api/books/:id", verifyToken, verifyRole("librarian"), async (req, res) => {
         try {
             const { id } = req.params;
 
@@ -292,7 +340,7 @@ async function run() {
     });
 
     // Wishlist related apis
-    app.post("/api/wishlist", async (req, res) => {
+    app.post("/api/wishlist", verifyToken, async (req, res) => {
         try {
                 const { bookId, userEmail } = req.body;
 
@@ -317,20 +365,17 @@ async function run() {
         }
     });
 
-    app.delete("/api/wishlist", async (req, res) => {
+    app.delete("/api/wishlist", verifyToken, async (req, res) => {
         try {
             const { bookId, userEmail } = req.body;
             const result = await wishlistsCollection.deleteOne({ bookId, userEmail });
             res.send(result);
         } catch (error) {
-            console.error(error);
-            res.status(500).send({
-            message: "Failed to remove wishlist",
-            });
+            res.status(500).send({ message: "Failed to remove wishlist"});
         }
     });
 
-    app.get("/api/wishlist/:email", async (req, res) => {
+    app.get("/api/wishlist/:email", verifyToken, async (req, res) => {
         try {
             const { email } = req.params;
             const wishlist = await wishlistsCollection.find({ userEmail: email }).toArray();
@@ -345,7 +390,7 @@ async function run() {
         }
     });
 
-    app.get("/api/admin/books", async (req, res) => {
+    app.get("/api/admin/books", verifyToken, verifyRole("admin"), async (req, res) => {
         const result = await booksCollection
             .find()
             .sort({ createdAt: -1 })
@@ -354,7 +399,7 @@ async function run() {
         res.send(result);
     });
 
-    app.delete("/api/admin/books/:id", async (req, res) => {
+    app.delete("/api/admin/books/:id", verifyToken, verifyRole("admin"), async (req, res) => {
         const { id } = req.params;
 
         if (!ObjectId.isValid(id)) {
@@ -370,7 +415,7 @@ async function run() {
         res.send(result);
     });
 
-    app.patch("/api/admin/books/status/:id", async (req, res) => {
+    app.patch("/api/admin/books/status/:id", verifyToken, verifyRole("admin"), async (req, res) => {
         const { id } = req.params;
 
         if (!ObjectId.isValid(id)) {
@@ -408,7 +453,7 @@ async function run() {
         res.send(result);
     });
 
-    app.get("/api/admin/stats", async (req, res) => {
+    app.get("/api/admin/stats", verifyToken, verifyRole("admin"), async (req, res) => {
         try {
             const totalUsers =
                 await usersCollection.countDocuments();
@@ -455,7 +500,7 @@ async function run() {
         }
     });
 
-    app.get("/api/admin/transactions", async (req, res) => {
+    app.get("/api/admin/transactions", verifyToken, verifyRole("admin"), async (req, res) => {
         const result = await deliveryRequestsCollection
             .find({
             status: "Delivered",
@@ -567,7 +612,7 @@ async function run() {
 
     // User related api route
     // Get all users
-    app.get("/api/users", async (req, res) => {
+    app.get("/api/users", verifyToken, verifyRole("admin"), async (req, res) => {
         try {
             const result = await usersCollection
             .find({})
@@ -583,7 +628,7 @@ async function run() {
     });
 
     // Update role
-    app.patch("/api/users/role/:id", async (req, res) => {
+    app.patch("/api/users/role/:id", verifyToken, verifyRole("admin"), async (req, res) => {
         try {
             const { id } = req.params;
             const { role } = req.body;
@@ -614,7 +659,7 @@ async function run() {
     });
 
     // Delete user
-    app.delete("/api/users/:id", async (req, res) => {
+    app.delete("/api/users/:id", verifyToken, verifyRole("admin"), async (req, res) => {
         try {
             const { id } = req.params;
 
@@ -842,24 +887,6 @@ async function run() {
                 }
             );
 
-            // if (status === "Delivered") {
-            // const delivery =
-            //     await deliveryRequestsCollection.findOne({
-            //     _id: new ObjectId(id),
-            //     });
-
-            // await booksCollection.updateOne(
-            //     {
-            //         _id: new ObjectId(delivery.bookId),
-            //     },
-            //     {
-            //         $set: {
-            //             availability: "Checked Out",
-            //             },
-            //         }
-            //     );
-            // }
-
             res.send(result);
         } catch (error) {
             console.error(error);
@@ -872,7 +899,7 @@ async function run() {
 
 
     // Delivery history api for user dashboard
-    app.get("/api/deliveries/user/:email", async (req, res) => {
+    app.get("/api/deliveries/user/:email", verifyToken, async (req, res) => {
         const {email} = req.params;
 
         const result = await deliveryRequestsCollection
@@ -888,7 +915,7 @@ async function run() {
     });
 
     // User reading list api
-    app.get("/api/reading-list/:email", async (req, res) => {
+    app.get("/api/reading-list/:email", verifyToken, async (req, res) => {
         try {
             const { email } = req.params;
 
@@ -920,7 +947,7 @@ async function run() {
     });
 
     // Reviews by user related api
-    app.get("/api/reviews/user/:email", async (req, res) => {
+    app.get("/api/reviews/user/:email", verifyToken, async (req, res) => {
         const { email } = req.params;
 
         const result = await reviewsCollection
@@ -1074,7 +1101,7 @@ async function run() {
     });
 
     // Api route for user overview page
-    app.get("/api/dashboard/user/:email", async (req, res) => {
+    app.get("/api/dashboard/user/:email", verifyToken, async (req, res) => {
         const { email } = req.params;
 
         const deliveries = await deliveryRequestsCollection
