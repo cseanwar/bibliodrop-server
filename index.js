@@ -9,7 +9,17 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT;
 
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      process.env.CLIENT_URL,
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "https://bibliodrop.vercel.app",
+    ].filter(Boolean),
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 const uri = process.env.MONGODB_URI;
@@ -44,12 +54,21 @@ async function run() {
     // verification related
     const verifyToken = async (req, res, next) => {
         try {
+            let token = null;
             const authHeader = req.headers?.authorization;
-            if (!authHeader) {
-                return res.status(401).send({message: "Unauthorized access"});
+            if (authHeader && authHeader.startsWith("Bearer ")) {
+                token = authHeader.split(" ")[1];
             }
 
-            const token = authHeader.split(" ")[1];
+            // Also check cookies for token if not in Authorization header
+            if (!token && req.headers?.cookie) {
+                const cookieStr = req.headers.cookie;
+                const match = cookieStr.match(/(?:^|;\s*)(?:better-auth\.session_token|__Secure-better-auth\.session_token|auth_token|token)=([^;]+)/);
+                if (match) {
+                    token = decodeURIComponent(match[1]);
+                }
+            }
+
             if (!token) {
                 return res.status(401).send({message: "Unauthorized access"});
             }
@@ -109,6 +128,9 @@ async function run() {
             search = "",
             category = "",
             sort = "",
+            availability = "",
+            minFee = "",
+            maxFee = "",
             page = 1,
             perPage = 8,
         } = req.query;
@@ -125,8 +147,8 @@ async function run() {
 
         if (search) {
             query.title = {
-            $regex: search,
-            $options: "i",
+                $regex: search,
+                $options: "i",
             };
         }
 
@@ -134,30 +156,46 @@ async function run() {
             query.category = category;
         }
 
+        if (availability === "Available") {
+            query.availability = { $ne: "Checked Out" };
+        } else if (availability === "Checked Out") {
+            query.availability = "Checked Out";
+        }
+
+        if (minFee || maxFee) {
+            query.deliveryFee = {};
+            if (minFee !== "" && !isNaN(Number(minFee))) {
+                query.deliveryFee.$gte = Number(minFee);
+            }
+            if (maxFee !== "" && !isNaN(Number(maxFee))) {
+                query.deliveryFee.$lte = Number(maxFee);
+            }
+        }
+
         let cursor = booksCollection.find(query);
 
         if (sort === "newest") {
             cursor = cursor.sort({
-            createdAt: -1,
+                createdAt: -1,
             });
         }
 
         if (sort === "fee-asc") {
             cursor = cursor.sort({
-            deliveryFee: 1,
+                deliveryFee: 1,
             });
         }
 
         if (sort === "fee-desc") {
             cursor = cursor.sort({
-            deliveryFee: -1,
+                deliveryFee: -1,
             });
         }
 
         // For pagination
         const total = await booksCollection.countDocuments(query);
         const books = await cursor.skip((Number(page) - 1) * Number(perPage)).limit(Number(perPage)).toArray();
-        const totalPages = Math.ceil(total / Number(perPage));
+        const totalPages = Math.ceil(total / Number(perPage)) || 1;
         res.send({
             books,
             total,
@@ -180,7 +218,7 @@ async function run() {
     });
 
     // Apis for dashboard/admin/book-approval queue page
-    app.get("/api/books/pending", async (req, res) => {
+    app.get("/api/books/pending", verifyToken, verifyRole("admin"), async (req, res) => {
         const result = await booksCollection
             .find({
             status: "Pending Approval",
@@ -543,7 +581,7 @@ async function run() {
         }
     });
 
-    app.get("/api/librarian/stats/:email", async (req, res) => {
+    app.get("/api/librarian/stats/:email", verifyToken, verifyRole("librarian", "admin"), async (req, res) => {
         const { email } = req.params;
 
         const totalBooksListed = await booksCollection.countDocuments({
@@ -748,7 +786,7 @@ async function run() {
 
 
     // Delivery related apis
-    app.get("/api/deliveries/librarian/:email", async (req, res) => {
+    app.get("/api/deliveries/librarian/:email", verifyToken, verifyRole("librarian", "admin"), async (req, res) => {
         const email = req.params.email;
 
         const result = await deliveryRequestsCollection
@@ -763,7 +801,7 @@ async function run() {
         res.send(result);
     });
 
-    app.post("/api/delivery-request", async (req, res) => {
+    app.post("/api/delivery-request", verifyToken, async (req, res) => {
         try {
             const request = req.body;
 
