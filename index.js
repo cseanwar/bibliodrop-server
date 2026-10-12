@@ -719,6 +719,47 @@ async function run() {
         }
     });
 
+    // User Profile APIs
+    app.get("/api/user/profile/:email", verifyToken, async (req, res) => {
+        try {
+            const { email } = req.params;
+            const user = await usersCollection.findOne(
+                { email },
+                { projection: { password: 0 } }
+            );
+            if (!user) {
+                return res.status(404).send({ message: "User not found" });
+            }
+            res.send(user);
+        } catch (error) {
+            console.error(error);
+            res.status(500).send({ message: error.message });
+        }
+    });
+
+    app.patch("/api/user/profile/:email", verifyToken, async (req, res) => {
+        try {
+            const { email } = req.params;
+            const { name, image, phone, address, bio } = req.body;
+            const updateFields = {};
+            if (name !== undefined) updateFields.name = name;
+            if (image !== undefined) updateFields.image = image;
+            if (phone !== undefined) updateFields.phone = phone;
+            if (address !== undefined) updateFields.address = address;
+            if (bio !== undefined) updateFields.bio = bio;
+            updateFields.updatedAt = new Date();
+
+            const result = await usersCollection.updateOne(
+                { email },
+                { $set: updateFields }
+            );
+            res.send({ success: true, result });
+        } catch (error) {
+            console.error(error);
+            res.status(500).send({ message: error.message });
+        }
+    });
+
     
     // Payment related apis
     app.post("/api/create-checkout-session", verifyToken, async (req, res) => {
