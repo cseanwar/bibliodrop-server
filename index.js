@@ -364,7 +364,7 @@ async function run() {
         }
     });
 
-    app.delete("/api/books/:id", async (req, res) => {
+    app.delete("/api/books/:id", verifyToken, verifyRole("librarian", "admin"), async (req, res) => {
         const { id } = req.params;
 
         if (!ObjectId.isValid(id)) {
