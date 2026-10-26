@@ -603,13 +603,29 @@ async function run() {
 
         let totalEarnings = 0;
 
+        // Build monthly earnings map from delivered requests
+        const monthlyMap = {};
+        const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
         for (const delivery of deliveries) {
             const book = await booksCollection.findOne({
                 _id: new ObjectId(delivery.bookId),
             });
+            const fee = Number(book?.deliveryFee || delivery.deliveryFee || 0);
+            totalEarnings += fee;
 
-            totalEarnings += Number(book?.deliveryFee || 0);
+            // Group by "Mon YYYY"
+            const d = delivery.updatedAt ? new Date(delivery.updatedAt) : new Date(delivery.requestedAt);
+            if (!isNaN(d.getTime())) {
+                const key = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+                monthlyMap[key] = (monthlyMap[key] || 0) + fee;
+            }
         }
+
+        // Convert to sorted array (chronological)
+        const monthlyEarnings = Object.entries(monthlyMap)
+            .map(([month, earnings]) => ({ month, earnings }))
+            .sort((a, b) => new Date(`01 ${a.month}`) - new Date(`01 ${b.month}`));
 
         const mostRequestedBooks =
             await deliveryRequestsCollection
@@ -643,6 +659,7 @@ async function run() {
             totalEarnings,
             activePendingRequests,
             mostRequestedBooks,
+            monthlyEarnings,
         });
     });
 
