@@ -102,7 +102,10 @@ async function run() {
     // Have to use after verifyToken middleware
     const verifyRole = (...roles) => {
         return (req, res, next) => {
-            if (!roles.includes(req.user.role)) {
+            const allowed = roles.flatMap((r) =>
+                r === "user" || r === "reader" ? ["user", "reader"] : [r]
+            );
+            if (!allowed.includes(req.user.role)) {
                 return res.status(403).send({message: "Forbidden access"});
             }
 
